@@ -15,6 +15,7 @@
  */
 package edu.kit.datamanager.bagit;
 
+import edu.kit.datamanager.bagit.entities.ContentInformationWrapper;
 import org.springframework.stereotype.Component;
 import edu.kit.datamanager.exceptions.CustomInternalServerError;
 import org.springframework.web.server.UnsupportedMediaTypeStatusException;
@@ -29,7 +30,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import edu.kit.datamanager.entities.CollectionElement;
+import edu.kit.datamanager.entities.repo.ContentInformation;
 import edu.kit.datamanager.entities.repo.DataResource;
+import edu.kit.datamanager.service.IGenericService;
 import edu.kit.datamanager.util.ZipUtils;
 import edu.kit.datamanager.util.xml.DataCiteMapper;
 import edu.kit.datamanager.util.xml.DublinCoreMapper;
@@ -41,25 +44,28 @@ import java.net.URI;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 import javax.xml.bind.JAXBContext;
 import javax.xml.bind.Marshaller;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.io.FileUtils;
 import org.datacite.schema.kernel_4.Resource;
 import org.purl.dc.elements._1.ElementContainer;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.util.UriComponentsBuilder;
 
 /**
  *
  * @author jejkal
  */
-
 @Component
 public class BagitCollectionProvider implements IContentCollectionProvider{
 
@@ -110,12 +116,38 @@ public class BagitCollectionProvider implements IContentCollectionProvider{
       //get all metadata resources
       ResponseEntity<DataResource> restResponse = restTemplate.exchange(URI.create(resourceUrl), HttpMethod.GET, entity, DataResource.class);
 
-      
+      //get all content information elements which are part of the provided collection
+      headers = new HttpHeaders();
+      headers.setAccept(Arrays.asList(MediaType.parseMediaType("application/vnd.datamanager.content-information+json")));
+      entity = new HttpEntity<String>(headers);
+
+      int page = 0;
+
+      List<ContentInformation> relevantContent = new ArrayList<>();
+      ResponseEntity<ContentInformation[]> contentInformationRestResponse = restTemplate.exchange(
+              UriComponentsBuilder.fromHttpUrl(resourceUrl + "/data/").queryParam("page", page).queryParam("size", "100").toUriString(),
+              HttpMethod.GET, entity,
+              ContentInformation[].class);
       //get all content information entries 
-      //remove all elements not in the collection
+      while(contentInformationRestResponse.getBody().length > 0){
+        for(ContentInformation info : contentInformationRestResponse.getBody()){
+          if(CollectionUtils.filter(collection, (t) -> {
+            return t.getRelativePath().equals(info.getRelativePath());
+          })){
+            relevantContent.add(info);
+          }
+        }
+        page++;
+        contentInformationRestResponse = restTemplate.exchange(
+                UriComponentsBuilder.fromHttpUrl(resourceUrl + "/data/").queryParam("page", page).queryParam("size", "100").toUriString(),
+                HttpMethod.GET, entity,
+                ContentInformation[].class);
+      }
+
+      ContentInformationWrapper wrapper = new ContentInformationWrapper();
+      wrapper.getContentInformation().addAll(relevantContent);
+
       //serialize to contentInformation.xml
-      
-      
       //create all metadata entities
       DataResource resource = restResponse.getBody();
       Resource dataCiteResource = DataCiteMapper.dataResourceToDataciteResource(resource);
@@ -123,6 +155,7 @@ public class BagitCollectionProvider implements IContentCollectionProvider{
 
       Path datacitePath = Paths.get(rootDir.toAbsolutePath().toString(), "metadata", "datacite.xml");
       Path dataResourcePath = Paths.get(rootDir.toAbsolutePath().toString(), "metadata", "dataResource.xml");
+      Path contentInformationPath = Paths.get(rootDir.toAbsolutePath().toString(), "metadata", "contentInformation.xml");
       Path dcPath = Paths.get(rootDir.toAbsolutePath().toString(), "metadata", "dc.xml");
 
       //check
@@ -139,6 +172,12 @@ public class BagitCollectionProvider implements IContentCollectionProvider{
       marshaller = jaxbContext.createMarshaller();
       marshaller.setProperty(Marshaller.JAXB_FORMATTED_OUTPUT, true);
       marshaller.marshal(resource, new FileOutputStream(dataResourcePath.toFile()));
+      
+       //marshal dataresource 
+      jaxbContext = JAXBContext.newInstance(ContentInformationWrapper.class);
+      marshaller = jaxbContext.createMarshaller();
+      marshaller.setProperty(Marshaller.JAXB_FORMATTED_OUTPUT, true);
+      marshaller.marshal(wrapper, new FileOutputStream(contentInformationPath.toFile()));
 
       //marshal dc 
       jaxbContext = JAXBContext.newInstance(ElementContainer.class);
@@ -149,6 +188,7 @@ public class BagitCollectionProvider implements IContentCollectionProvider{
       //obtain data resource document and write it as datacite metadata (element.getRepositoryLocation() - '/data*'
       builder.addTagfile(datacitePath.toUri());
       builder.addTagfile(dataResourcePath.toUri());
+      builder.addTagfile(contentInformationPath.toUri());
       builder.addTagfile(dcPath.toUri());
 
       //adding metadata and write
@@ -167,13 +207,11 @@ public class BagitCollectionProvider implements IContentCollectionProvider{
       throw new CustomInternalServerError("Failed to create BagIt package.");
     } finally{
       try{
-        System.out.println("DELETE ZIP ");
         Files.delete(zipDestination);
       } catch(IOException ex){
       }
 
       try{
-        System.out.println("DELETE ROOT");
         Files.delete(rootDir);
       } catch(IOException ex){
       }
