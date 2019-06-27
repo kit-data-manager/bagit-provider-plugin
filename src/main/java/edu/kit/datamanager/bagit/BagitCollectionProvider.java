@@ -32,7 +32,6 @@ import org.springframework.http.MediaType;
 import edu.kit.datamanager.entities.CollectionElement;
 import edu.kit.datamanager.entities.repo.ContentInformation;
 import edu.kit.datamanager.entities.repo.DataResource;
-import edu.kit.datamanager.service.IGenericService;
 import edu.kit.datamanager.util.ZipUtils;
 import edu.kit.datamanager.util.xml.DataCiteMapper;
 import edu.kit.datamanager.util.xml.DublinCoreMapper;
@@ -50,10 +49,10 @@ import java.util.Map;
 import javax.xml.bind.JAXBContext;
 import javax.xml.bind.Marshaller;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.IterableUtils;
 import org.apache.commons.io.FileUtils;
 import org.datacite.schema.kernel_4.Resource;
 import org.purl.dc.elements._1.ElementContainer;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -111,7 +110,7 @@ public class BagitCollectionProvider implements IContentCollectionProvider{
 
       HttpHeaders headers = new HttpHeaders();
       headers.setAccept(Arrays.asList(MediaType.APPLICATION_JSON));
-      HttpEntity<String> entity = new HttpEntity<String>(headers);
+      HttpEntity<String> entity = new HttpEntity<>(headers);
 
       //get all metadata resources
       ResponseEntity<DataResource> restResponse = restTemplate.exchange(URI.create(resourceUrl), HttpMethod.GET, entity, DataResource.class);
@@ -119,7 +118,7 @@ public class BagitCollectionProvider implements IContentCollectionProvider{
       //get all content information elements which are part of the provided collection
       headers = new HttpHeaders();
       headers.setAccept(Arrays.asList(MediaType.parseMediaType("application/vnd.datamanager.content-information+json")));
-      entity = new HttpEntity<String>(headers);
+      entity = new HttpEntity<>(headers);
 
       int page = 0;
 
@@ -128,13 +127,24 @@ public class BagitCollectionProvider implements IContentCollectionProvider{
               UriComponentsBuilder.fromHttpUrl(resourceUrl + "/data/").queryParam("page", page).queryParam("size", "100").toUriString(),
               HttpMethod.GET, entity,
               ContentInformation[].class);
+
+      if(contentInformationRestResponse == null || contentInformationRestResponse.getBody() == null){
+        throw new CustomInternalServerError("Unable to receive content information.");
+      }
+
       //get all content information entries 
       while(contentInformationRestResponse.getBody().length > 0){
         for(ContentInformation info : contentInformationRestResponse.getBody()){
-          if(CollectionUtils.filter(collection, (t) -> {
+
+          System.out.println("CHECK " + info);
+
+          if(IterableUtils.find(collection, (t) -> {
             return t.getRelativePath().equals(info.getRelativePath());
-          })){
+          }) != null){
+            System.out.println("ADD!");
             relevantContent.add(info);
+          } else{
+            System.out.println("NOT ADD");
           }
         }
         page++;
@@ -142,6 +152,11 @@ public class BagitCollectionProvider implements IContentCollectionProvider{
                 UriComponentsBuilder.fromHttpUrl(resourceUrl + "/data/").queryParam("page", page).queryParam("size", "100").toUriString(),
                 HttpMethod.GET, entity,
                 ContentInformation[].class);
+
+        if(contentInformationRestResponse == null || contentInformationRestResponse.getBody() == null){
+          LOGGER.debug("Did not receive additional content information elements. Leaving loop.");
+          break;
+        }
       }
 
       ContentInformationWrapper wrapper = new ContentInformationWrapper();
@@ -172,8 +187,8 @@ public class BagitCollectionProvider implements IContentCollectionProvider{
       marshaller = jaxbContext.createMarshaller();
       marshaller.setProperty(Marshaller.JAXB_FORMATTED_OUTPUT, true);
       marshaller.marshal(resource, new FileOutputStream(dataResourcePath.toFile()));
-      
-       //marshal dataresource 
+
+      //marshal dataresource 
       jaxbContext = JAXBContext.newInstance(ContentInformationWrapper.class);
       marshaller = jaxbContext.createMarshaller();
       marshaller.setProperty(Marshaller.JAXB_FORMATTED_OUTPUT, true);
@@ -216,11 +231,6 @@ public class BagitCollectionProvider implements IContentCollectionProvider{
       } catch(IOException ex){
       }
     }
-
-    //create bag
-    //write all elements as fetch files pointing to the KIT DM URLs (element.getRepositoryLocation() + relativePath)
-    //write bag to temp folder
-    //deliver bag from temp folder
   }
 
   @Override
