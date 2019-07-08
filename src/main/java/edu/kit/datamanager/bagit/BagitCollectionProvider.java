@@ -136,15 +136,10 @@ public class BagitCollectionProvider implements IContentCollectionProvider{
       while(contentInformationRestResponse.getBody().length > 0){
         for(ContentInformation info : contentInformationRestResponse.getBody()){
 
-          System.out.println("CHECK " + info);
-
           if(IterableUtils.find(collection, (t) -> {
             return t.getRelativePath().equals(info.getRelativePath());
           }) != null){
-            System.out.println("ADD!");
             relevantContent.add(info);
-          } else{
-            System.out.println("NOT ADD");
           }
         }
         page++;
