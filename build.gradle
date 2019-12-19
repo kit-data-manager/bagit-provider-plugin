@@ -18,7 +18,6 @@ ext { springBootVersion = '2.1.4.RELEASE' }
 apply plugin: 'java'
 apply plugin: 'eclipse'
 apply plugin: 'maven'
-apply plugin: 'jacoco'
 
 description = """Collection download handler for providing BagIt archives complying with the RDA RDRIWG recommendations."""
 

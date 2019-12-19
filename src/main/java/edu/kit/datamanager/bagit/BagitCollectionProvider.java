@@ -29,7 +29,7 @@ import javax.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
-import edu.kit.datamanager.entities.CollectionElement;
+import edu.kit.datamanager.entities.ContentElement;
 import edu.kit.datamanager.entities.repo.ContentInformation;
 import edu.kit.datamanager.entities.repo.DataResource;
 import edu.kit.datamanager.util.ZipUtils;
@@ -48,7 +48,6 @@ import java.util.HashMap;
 import java.util.Map;
 import javax.xml.bind.JAXBContext;
 import javax.xml.bind.Marshaller;
-import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.IterableUtils;
 import org.apache.commons.io.FileUtils;
 import org.datacite.schema.kernel_4.Resource;
@@ -73,14 +72,14 @@ public class BagitCollectionProvider implements IContentCollectionProvider{
   public final static MediaType BAGIT_MEDIA_TYPE = MediaType.parseMediaType("application/vnd.datamanager.bagit+zip");
 
   @Override
-  public void provide(List<CollectionElement> collection, MediaType mediaType, HttpServletResponse response){
+  public void provide(List<ContentElement> collection, MediaType mediaType, HttpServletResponse response){
     if(!BAGIT_MEDIA_TYPE.toString().equals(mediaType.toString())){
       LOGGER.error("Unsupported media type {} received. Throwing HTTP 415 (UNSUPPORTED_MEDIA_TYPE).", mediaType);
       throw new UnsupportedMediaTypeStatusException(mediaType, Arrays.asList(getSupportedMediaTypes()));
     }
 
     LOGGER.trace("Checking received collection for missing/invalid elements.");
-    for(CollectionElement element : collection){
+    for(ContentElement element : collection){
       Path path = Paths.get(element.getContentUri());
       if(!Files.exists(path) || !Files.isReadable(path)){
         LOGGER.error("Failed to locate/read file {} at relative path {} with URI {}. Aborting packaging operation.", element.getContentUri(), element.getRelativePath());
@@ -99,7 +98,7 @@ public class BagitCollectionProvider implements IContentCollectionProvider{
     try{
       BagBuilder builder = BagBuilder.create(rootDir);
 
-      for(CollectionElement element : collection){
+      for(ContentElement element : collection){
         FetchItem item = new FetchItem(URI.create(element.getRepositoryLocation() + element.getRelativePath()).toURL(), element.getContentLength(), Paths.get(rootDir.toAbsolutePath().toString(), element.getRelativePath()));
         Map<String, String> checksums = new HashMap<>();
         checksums.put("SHA1", element.getChecksum());
