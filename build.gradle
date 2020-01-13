@@ -13,7 +13,7 @@ plugins {
    id "com.github.kt3k.coveralls" version "2.8.1" 
 }
 
-ext { springBootVersion = '2.1.4.RELEASE' }
+ext { springBootVersion = '2.2.2.RELEASE' }
 
 apply plugin: 'java'
 apply plugin: 'eclipse'
@@ -27,21 +27,18 @@ repositories {
    mavenLocal()
    jcenter()
    mavenCentral()
+   maven { url 'http://oss.jfrog.org/artifactory/oss-snapshot-local/' }
 }
 
 dependencies {
- 
-   // implementation 'commons-codec:commons-codec:1.7'
-   //implementation 'commons-io:commons-io:2.5'
    implementation 'edu.kit.datamanager:service-base:0.1'
    
-   compile 'gov.loc:bagit:5.0.6'
-   compile 'org.apache.commons:commons-text:1.6'
-   //  implementation 'com.fasterxml.jackson.dataformat:jackson-dataformat-xml:2.9.8'   
+   implementation 'gov.loc:bagit:5.0.6'
+   implementation 'org.apache.commons:commons-text:1.6'
 }
 
 lombok {
-   version = '1.18.4'
+   version = '1.18.10'
    sha256 = ""
 }
 
